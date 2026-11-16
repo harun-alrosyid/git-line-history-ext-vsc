@@ -1,0 +1,50 @@
+{
+  "name": "git-line-history",
+  "displayName": "Git Line History",
+  "description": "Show the last Git commit for the line under the cursor.",
+  "version": "0.0.4",
+  "publisher": "harunalrosyid",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/harunalrosyid/git-line-history.git"
+  },
+  "engines": {
+    "vscode": "^1.146.0"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitLineHistory.copyCommit",
+        "title": "Git Line History: Copy Commit Hash"
+      },
+      {
+        "command": "gitLineHistory.reloadExtension",
+        "title": "Git Line History: Reload Extension"
+      }
+    ],
+    "configuration": {
+      "title": "Git Line History",
+      "properties": {
+        "gitLineHistory.dateLocale": {
+          "type": "string",
+          "default": "",
+          "description": "Locale used for commit dates. Empty uses the system locale."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node node_modules/typescript/lib/tsc.js -p ./tsconfig.json",
+    "test": "npm run compile && node test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/vscode": "^1.146.0",
+    "typescript": "^7.0.2"
+  }
+}
