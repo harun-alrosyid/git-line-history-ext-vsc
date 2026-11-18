@@ -1,6 +1,7 @@
 .git/
 .gitignore
 .vscode/
+.docs/
 node_modules/
 src/
 test.js
