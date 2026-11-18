@@ -1,9 +1,6 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-
-const exec = promisify(execFile);
 
 export type ParentCommit = {
   hash: string;
@@ -21,6 +18,11 @@ export type LineCommit = {
   summary: string;
   isUncommitted?: boolean;
   parent?: ParentCommit;
+};
+
+export type LineCommitOptions = {
+  includeParent?: boolean;
+  contents?: string;
 };
 
 type ParentInfo = {
@@ -48,7 +50,24 @@ export function clearGitCache(): void {
   parentInfoCache.clear();
 }
 
-async function getRepoRoot(cwd: string): Promise<string | null> {
+function execGit(args: string[], options: { cwd: string; input?: string }): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = execFile('git', args, { cwd: options.cwd, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve({ stdout, stderr });
+      }
+    });
+    if (options.input !== undefined && child.stdin) {
+      child.stdin.on('error', () => {});
+      child.stdin.write(options.input);
+      child.stdin.end();
+    }
+  });
+}
+
+export async function getRepoRoot(cwd: string): Promise<string | null> {
   if (rootCache.has(cwd)) return rootCache.get(cwd)!;
 
   // Hierarchical lookup: check if cwd is inside an already known repository root
@@ -60,7 +79,7 @@ async function getRepoRoot(cwd: string): Promise<string | null> {
   }
 
   try {
-    const { stdout } = await exec('git', ['rev-parse', '--show-toplevel'], { cwd });
+    const { stdout } = await execGit(['rev-parse', '--show-toplevel'], { cwd });
     const root = stdout.trim();
     setCacheWithLimit(rootCache, root, root);
     setCacheWithLimit(rootCache, cwd, root);
@@ -71,10 +90,10 @@ async function getRepoRoot(cwd: string): Promise<string | null> {
   }
 }
 
-async function getRemoteOrigin(root: string): Promise<string | null> {
+export async function getRemoteOrigin(root: string): Promise<string | null> {
   if (remoteCache.has(root)) return remoteCache.get(root)!;
   try {
-    const { stdout } = await exec('git', ['remote', 'get-url', 'origin'], { cwd: root });
+    const { stdout } = await execGit(['remote', 'get-url', 'origin'], { cwd: root });
     const origin = stdout.trim();
     setCacheWithLimit(remoteCache, root, origin);
     return origin;
@@ -104,7 +123,7 @@ function getDate(fields: Record<string, string>): Date | null {
 export async function lineCommit(
   filePath: string,
   line: number,
-  options?: { includeParent?: boolean }
+  options?: LineCommitOptions
 ): Promise<LineCommit | null> {
   let resolvedPath = filePath;
   try {
@@ -118,9 +137,16 @@ export async function lineCommit(
   const relative = path.relative(root, resolvedPath).replace(/\\/g, '/');
   const origin = await getRemoteOrigin(root);
 
+  const blameArgs = ['blame', '--line-porcelain'];
+  if (options?.contents !== undefined) {
+    blameArgs.push('--contents', '-');
+  }
+  blameArgs.push('-L', `${line + 1},${line + 1}`, '--', relative);
+
   let output: string;
   try {
-    output = (await exec('git', ['blame', '--line-porcelain', '-L', `${line + 1},${line + 1}`, '--', relative], { cwd: root })).stdout;
+    const res = await execGit(blameArgs, { cwd: root, input: options?.contents });
+    output = res.stdout;
   } catch {
     return null;
   }
@@ -149,7 +175,7 @@ export async function lineCommit(
       if (parts[1]) parentFile = parts[1];
     } else {
       try {
-        const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd: root });
+        const { stdout } = await execGit(['rev-parse', 'HEAD'], { cwd: root });
         parentHash = stdout.trim();
       } catch {}
     }
@@ -160,7 +186,7 @@ export async function lineCommit(
 
     let parentLine = '(line did not exist)';
     try {
-      const parentLines = (await exec('git', ['show', `${parentHash}:${parentFile}`], { cwd: root })).stdout.split(/\r?\n/);
+      const parentLines = (await execGit(['show', `${parentHash}:${parentFile}`], { cwd: root })).stdout.split(/\r?\n/);
       parentLine = parentLines[line] ?? '(line did not exist)';
     } catch {}
 
@@ -168,7 +194,7 @@ export async function lineCommit(
     let parentDate: Date | null = null;
     let parentSummary = '';
     try {
-      const parentFields = (await exec('git', ['show', '-s', '--format=%an%x00%aI%x00%s', parentHash], { cwd: root })).stdout.split('\0');
+      const parentFields = (await execGit(['show', '-s', '--format=%an%x00%aI%x00%s', parentHash], { cwd: root })).stdout.split('\0');
       parentAuthor = parentFields[0] || 'Unknown';
       parentDate = parentFields[1] ? new Date(parentFields[1]) : null;
       parentSummary = parentFields[2] || '';
@@ -207,11 +233,11 @@ export async function lineCommit(
     }
   } else {
     try {
-      const stdout = (await exec('git', ['show', '-s', '--format=%P', hash], { cwd: root })).stdout.trim();
+      const stdout = (await execGit(['show', '-s', '--format=%P', hash], { cwd: root })).stdout.trim();
       const parents = stdout.split(/\s+/).filter(Boolean);
       parent = parents[0];
       if (parent) {
-        const parentFields = (await exec('git', ['show', '-s', '--format=%an%x00%aI%x00%s', parent], { cwd: root })).stdout.split('\0');
+        const parentFields = (await execGit(['show', '-s', '--format=%an%x00%aI%x00%s', parent], { cwd: root })).stdout.split('\0');
         parentAuthor = parentFields[0] || 'Unknown';
         parentDate = parentFields[1] ? new Date(parentFields[1]) : null;
         parentSummary = parentFields[2] || '';
@@ -230,7 +256,7 @@ export async function lineCommit(
 
   let parentLine = '(file did not exist)';
   try {
-    const parentLines = (await exec('git', ['show', `${parent}:${relative}`], { cwd: root })).stdout.split(/\r?\n/);
+    const parentLines = (await execGit(['show', `${parent}:${relative}`], { cwd: root })).stdout.split(/\r?\n/);
     const origLineStr = firstLine.split(' ')[1];
     const origLine = origLineStr ? parseInt(origLineStr, 10) - 1 : line;
     parentLine = parentLines[origLine] ?? parentLines[line] ?? '(line did not exist)';

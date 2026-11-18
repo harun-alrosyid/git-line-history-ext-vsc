@@ -14,6 +14,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let debounceTimer: NodeJS.Timeout | undefined;
   let lastUri: string | undefined;
   let lastLine: number | undefined;
+  let lastVersion: number | undefined;
 
   context.subscriptions.push(
     vscode.commands.registerCommand('gitLineHistory.reloadExtension', () => {
@@ -38,7 +39,8 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         try {
-          const commit = await lineCommit(document.uri.fsPath, position.line, { includeParent: true });
+          const contents = document.isDirty ? document.getText() : undefined;
+          const commit = await lineCommit(document.uri.fsPath, position.line, { includeParent: true, contents });
           if (!commit) return;
 
           const config = vscode.workspace.getConfiguration('gitLineHistory');
@@ -97,13 +99,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const updateInlineBlame = (editor: vscode.TextEditor, immediate = false): void => {
     const currentLine = editor.selection.active.line;
     const currentUri = editor.document.uri.toString();
+    const currentVersion = editor.document.version;
 
-    if (!immediate && currentUri === lastUri && currentLine === lastLine) {
+    if (!immediate && currentUri === lastUri && currentLine === lastLine && currentVersion === lastVersion) {
       return;
     }
 
     lastUri = currentUri;
     lastLine = currentLine;
+    lastVersion = currentVersion;
     const currentId = ++updateId;
 
     if (debounceTimer) {
@@ -112,7 +116,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const run = async () => {
       try {
-        const commit = await lineCommit(editor.document.uri.fsPath, currentLine, { includeParent: false });
+        const contents = editor.document.isDirty ? editor.document.getText() : undefined;
+        const commit = await lineCommit(editor.document.uri.fsPath, currentLine, { includeParent: false, contents });
         const config = vscode.workspace.getConfiguration('gitLineHistory');
         const showUncommitted = config.get<boolean>('showUncommitted', false);
 
@@ -150,7 +155,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => editor && updateInlineBlame(editor, true)),
-    vscode.window.onDidChangeTextEditorSelection(({ textEditor }) => updateInlineBlame(textEditor))
+    vscode.window.onDidChangeTextEditorSelection(({ textEditor }) => updateInlineBlame(textEditor)),
+    vscode.workspace.onDidChangeTextDocument(({ document }) => {
+      const activeEditor = vscode.window.activeTextEditor;
+      if (activeEditor && activeEditor.document.uri.toString() === document.uri.toString()) {
+        updateInlineBlame(activeEditor);
+      }
+    })
   );
 
   if (vscode.window.activeTextEditor) {

@@ -109,6 +109,21 @@ async function runTests() {
     const uncommittedWithParent = await lineCommit(tempFile, 1, { includeParent: true });
     assert.ok(uncommittedWithParent.parent, 'Expected parent for uncommitted change');
     assert.equal(uncommittedWithParent.parent.hash.length, 40);
+
+    // Test 3.4: Dirty buffer (unsaved file) via options.contents
+    const dirtyBuffer = 'inserted line 1\ninserted line 2\nfirst committed line\n';
+    // Line 0: new unsaved line
+    const dirtyLine0 = await lineCommit(tempFile, 0, { contents: dirtyBuffer });
+    assert.ok(dirtyLine0, 'Expected dirty line 0 to return a result');
+    assert.equal(dirtyLine0.isUncommitted, true);
+    assert.equal(dirtyLine0.author, 'You');
+
+    // Line 2: original first committed line shifted down by 2 lines in dirty buffer
+    const dirtyLine2 = await lineCommit(tempFile, 2, { contents: dirtyBuffer });
+    assert.ok(dirtyLine2, 'Expected shifted committed line to return a result');
+    assert.equal(dirtyLine2.isUncommitted, false);
+    assert.equal(dirtyLine2.hash, committed.hash);
+    assert.equal(dirtyLine2.summary, 'initial commit');
   } finally {
     clearGitCache();
     fs.rmSync(tempDir, { recursive: true, force: true });
