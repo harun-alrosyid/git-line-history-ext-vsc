@@ -84,7 +84,8 @@ The generated `.vsix` file can be shared or uploaded to a release.
 
 ## Configuration
 
-- `gitLineHistory.dateLocale`: controls date formatting. Empty uses the system locale.
+- `gitLineHistory.dateFormat`: date format for inline blame (`relative`, `date`, or `datetime`). Default is `relative` (e.g. `2 days ago`).
+- `gitLineHistory.dateLocale`: controls date formatting locale. Empty uses the system locale.
 - `gitLineHistory.showUncommitted`: controls whether uncommitted or newly edited lines show inline blame. Default is `false` to keep editing fast and distraction-free.
 
 ## Limitations

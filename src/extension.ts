@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { clearGitCache, lineCommit, parseBlame } from './git';
-import { commitUrl, diffLines, escapeMarkdown, html } from './format';
+import { commitUrl, DateFormatStyle, diffLines, escapeMarkdown, formatDate, html } from './format';
 import { createInlineBlameDecoration } from './styles';
 
 function copyLink(hash: string): string {
@@ -57,20 +57,31 @@ export function activate(context: vscode.ExtensionContext): void {
             if (commit.parent) {
               const parentUrl = commitUrl(commit.origin, commit.parent.hash);
               const parentHash = parentUrl ? `[${commit.parent.hash.slice(0, 8)}](${parentUrl})` : `\`${commit.parent.hash.slice(0, 8)}\``;
+              const parentFullDate = formatDate(commit.parent.date, 'datetime', locale);
+              const parentRelativeDate = formatDate(commit.parent.date, 'relative', locale);
+              const parentDateDisplay = (commit.parent.date && parentRelativeDate !== parentFullDate) ? `${parentRelativeDate} (${parentFullDate})` : parentFullDate;
               markdown.appendMarkdown(`**Previous commit**  \n`);
-              markdown.appendMarkdown(`<span style="color:var(--vscode-gitDecoration-addedResourceForeground)">${html(commit.parent.author)}</span>, ${escapeMarkdown(commit.parent.date?.toLocaleString(locale) || 'Unknown date')}  \n`);
+              markdown.appendMarkdown(`<span style="color:var(--vscode-gitDecoration-addedResourceForeground)">${html(commit.parent.author)}</span>, ${escapeMarkdown(parentDateDisplay)}  \n`);
               markdown.appendMarkdown(`<span style="color:var(--vscode-textLink-foreground)">${parentHash} ${copyLink(commit.parent.hash)} — ${html(commit.parent.summary)}</span>\n\n**Line comparison**  \n`);
               markdown.appendCodeblock(diffLines(commit.parent.line, document.lineAt(position.line).text), 'diff');
             }
           } else {
             const currentUrl = commitUrl(commit.origin, commit.hash);
             const currentHash = currentUrl ? `[${commit.hash.slice(0, 8)}](${currentUrl})` : `\`${commit.hash.slice(0, 8)}\``;
-            markdown.appendMarkdown(`<span style="color:var(--vscode-gitDecoration-addedResourceForeground)"><strong>${html(commit.author)}</strong></span>, <strong>${escapeMarkdown(commit.date?.toLocaleString(locale) || 'Unknown date')}</strong>  \n`);
+            const fullDate = formatDate(commit.date, 'datetime', locale);
+            const relativeDate = formatDate(commit.date, 'relative', locale);
+            const dateDisplay = (commit.date && relativeDate !== fullDate) ? `${relativeDate} (${fullDate})` : fullDate;
+
+            markdown.appendMarkdown(`<span style="color:var(--vscode-gitDecoration-addedResourceForeground)"><strong>${html(commit.author)}</strong></span>, <strong>${escapeMarkdown(dateDisplay)}</strong>  \n`);
             markdown.appendMarkdown(`<span style="color:var(--vscode-textLink-foreground);"><strong>${currentHash} ${copyLink(commit.hash)} — ${html(commit.summary)}</strong></span>\n\n`);
             if (commit.parent) {
               const parentUrl = commitUrl(commit.origin, commit.parent.hash);
               const parentHash = parentUrl ? `[${commit.parent.hash.slice(0, 8)}](${parentUrl})` : `\`${commit.parent.hash.slice(0, 8)}\``;
-              markdown.appendMarkdown(`<span style="color:var(--vscode-gitDecoration-addedResourceForeground)">${html(commit.parent.author)}</span>, ${escapeMarkdown(commit.parent.date?.toLocaleString(locale) || 'Unknown date')}  \n`);
+              const parentFullDate = formatDate(commit.parent.date, 'datetime', locale);
+              const parentRelativeDate = formatDate(commit.parent.date, 'relative', locale);
+              const parentDateDisplay = (commit.parent.date && parentRelativeDate !== parentFullDate) ? `${parentRelativeDate} (${parentFullDate})` : parentFullDate;
+
+              markdown.appendMarkdown(`<span style="color:var(--vscode-gitDecoration-addedResourceForeground)">${html(commit.parent.author)}</span>, ${escapeMarkdown(parentDateDisplay)}  \n`);
               markdown.appendMarkdown(`<span style="color:var(--vscode-textLink-foreground)">${parentHash} ${copyLink(commit.parent.hash)} — ${html(commit.parent.summary)}</span>\n\n**Line comparison**  \n`);
               markdown.appendCodeblock(diffLines(commit.parent.line, document.lineAt(position.line).text), 'diff');
             }
@@ -114,11 +125,12 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         const locale = config.get<string>('dateLocale') || undefined;
+        const dateFormat = config.get<DateFormatStyle>('dateFormat', 'relative');
         const summary = commit.summary.length > 72 ? `${commit.summary.slice(0, 69)}...` : commit.summary;
         const lineLength = editor.document.lineAt(currentLine).text.length;
         summaryRange = { uri: currentUri, line: currentLine, start: lineLength };
 
-        const dateText = commit.isUncommitted ? '' : ` · ${commit.date?.toLocaleDateString(locale) || 'Unknown date'}`;
+        const dateText = commit.isUncommitted ? '' : ` · ${formatDate(commit.date, dateFormat, locale)}`;
         editor.setDecorations(inlineBlame, [{
           range: new vscode.Range(currentLine, lineLength, currentLine, lineLength),
           renderOptions: { after: { contentText: `${commit.author}${dateText} · ${summary}` } }
@@ -146,5 +158,5 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 }
 
-export { commitUrl, diffLines } from './format';
+export { commitUrl, diffLines, formatDate, formatTimeAgo } from './format';
 export { parseBlame, clearGitCache };

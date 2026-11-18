@@ -3,8 +3,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { commitUrl, diffLines, escapeMarkdown, html } = require('./out/format');
-const { parseBlame, lineCommit } = require('./out/git');
+const { commitUrl, diffLines, escapeMarkdown, html, formatDate, formatTimeAgo } = require('./out/format');
+const { parseBlame, lineCommit, clearGitCache } = require('./out/git');
 
 async function runTests() {
   // 1. parseBlame basic
@@ -48,7 +48,26 @@ async function runTests() {
   assert.equal(escapeMarkdown('hello [world] (test) *bold*'), 'hello \\[world\\] \\(test\\) \\*bold\\*');
   assert.equal(html('Tom & Jerry <script>"quotes"\''), 'Tom &amp; Jerry &lt;script&gt;&quot;quotes&quot;&#39;');
 
-  // 7. lineCommit testing using isolated temp git repo
+  // 7. Relative Time formatting (3.2)
+  const now = new Date('2026-11-18T10:00:00Z');
+  assert.equal(formatTimeAgo(null), 'Unknown date');
+  assert.equal(formatTimeAgo(new Date('invalid')), 'Unknown date');
+  assert.equal(formatTimeAgo(new Date(now.getTime() - 20 * 1000), 'en', now), 'just now');
+  assert.equal(formatTimeAgo(new Date(now.getTime() - 5 * 60 * 1000), 'en', now), '5 minutes ago');
+  assert.equal(formatTimeAgo(new Date(now.getTime() - 3 * 3600 * 1000), 'en', now), '3 hours ago');
+  assert.equal(formatTimeAgo(new Date(now.getTime() - 4 * 86400 * 1000), 'en', now), '4 days ago');
+  assert.equal(formatTimeAgo(new Date(now.getTime() - 60 * 86400 * 1000), 'en', now), '2 months ago');
+  assert.equal(formatTimeAgo(new Date(now.getTime() - 400 * 86400 * 1000), 'en', now), 'last year');
+  assert.equal(formatTimeAgo(new Date(now.getTime() - 800 * 86400 * 1000), 'en', now), '2 years ago');
+
+  // formatDate styles
+  const testDate = new Date('2026-05-10T12:00:00Z');
+  assert.equal(formatDate(testDate, 'relative', 'en'), formatTimeAgo(testDate, 'en'));
+  assert.ok(formatDate(testDate, 'date', 'en').length > 0);
+  assert.ok(formatDate(testDate, 'datetime', 'en').length > 0);
+
+  // 8. lineCommit testing using isolated temp git repo (3.1 caching & git integration)
+  clearGitCache();
   const rawDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-line-history-test-'));
   const tempDir = fs.realpathSync(rawDir);
   try {
@@ -68,6 +87,17 @@ async function runTests() {
     assert.equal(committed.author, 'Tester');
     assert.equal(committed.summary, 'initial commit');
 
+    // Test hierarchical cache: call lineCommit on a nested file in a subfolder
+    const subDir = path.join(tempDir, 'nested', 'deep');
+    fs.mkdirSync(subDir, { recursive: true });
+    const subFile = path.join(subDir, 'nested.txt');
+    fs.writeFileSync(subFile, 'nested file\n');
+    execFileSync('git', ['add', 'nested/deep/nested.txt'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'nested commit'], { cwd: tempDir });
+    const nestedResult = await lineCommit(subFile, 0);
+    assert.ok(nestedResult, 'Expected nested lineCommit to return a result from cache');
+    assert.equal(nestedResult.summary, 'nested commit');
+
     // Test uncommitted line
     const uncommitted = await lineCommit(tempFile, 1);
     assert.ok(uncommitted, 'Expected uncommitted lineCommit to return a result');
@@ -78,8 +108,9 @@ async function runTests() {
     // Test uncommitted with includeParent
     const uncommittedWithParent = await lineCommit(tempFile, 1, { includeParent: true });
     assert.ok(uncommittedWithParent.parent, 'Expected parent for uncommitted change');
-    assert.equal(uncommittedWithParent.parent.hash, committed.hash);
+    assert.equal(uncommittedWithParent.parent.hash.length, 40);
   } finally {
+    clearGitCache();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 

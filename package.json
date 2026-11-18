@@ -35,6 +35,16 @@
           "default": "",
           "description": "Locale used for commit dates. Empty uses the system locale."
         },
+        "gitLineHistory.dateFormat": {
+          "type": "string",
+          "enum": [
+            "relative",
+            "date",
+            "datetime"
+          ],
+          "default": "relative",
+          "description": "Date format for inline blame: 'relative' ('2 days ago'), 'date' ('11/18/2026'), or 'datetime' ('11/18/2026, 11:00 AM')."
+        },
         "gitLineHistory.showUncommitted": {
           "type": "boolean",
           "default": false,
