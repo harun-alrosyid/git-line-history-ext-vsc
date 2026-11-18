@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -78,11 +79,16 @@ export async function lineCommit(
   line: number,
   options?: { includeParent?: boolean }
 ): Promise<LineCommit | null> {
-  const cwd = path.dirname(filePath);
+  let resolvedPath = filePath;
+  try {
+    resolvedPath = fs.realpathSync(filePath);
+  } catch {}
+
+  const cwd = path.dirname(resolvedPath);
   const root = await getRepoRoot(cwd);
   if (!root) return null;
 
-  const relative = path.relative(root, filePath).replace(/\\/g, '/');
+  const relative = path.relative(root, resolvedPath).replace(/\\/g, '/');
   const origin = await getRemoteOrigin(root);
 
   let output: string;

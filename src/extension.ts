@@ -40,7 +40,12 @@ export function activate(context: vscode.ExtensionContext): void {
         try {
           const commit = await lineCommit(document.uri.fsPath, position.line, { includeParent: true });
           if (!commit) return;
-          const locale = vscode.workspace.getConfiguration('gitLineHistory').get<string>('dateLocale') || undefined;
+
+          const config = vscode.workspace.getConfiguration('gitLineHistory');
+          const showUncommitted = config.get<boolean>('showUncommitted', false);
+          if (commit.isUncommitted && !showUncommitted) return;
+
+          const locale = config.get<string>('dateLocale') || undefined;
           const markdown = new vscode.MarkdownString();
           markdown.isTrusted = { enabledCommands: ['gitLineHistory.copyCommit'] };
           markdown.supportThemeIcons = true;
@@ -97,14 +102,18 @@ export function activate(context: vscode.ExtensionContext): void {
     const run = async () => {
       try {
         const commit = await lineCommit(editor.document.uri.fsPath, currentLine, { includeParent: false });
-        if (!commit || currentId !== updateId || editor !== vscode.window.activeTextEditor) {
-          if (currentId === updateId && !commit) {
+        const config = vscode.workspace.getConfiguration('gitLineHistory');
+        const showUncommitted = config.get<boolean>('showUncommitted', false);
+
+        if (!commit || (commit.isUncommitted && !showUncommitted) || currentId !== updateId || editor !== vscode.window.activeTextEditor) {
+          if (currentId === updateId) {
             editor.setDecorations(inlineBlame, []);
             summaryRange = undefined;
           }
           return;
         }
-        const locale = vscode.workspace.getConfiguration('gitLineHistory').get<string>('dateLocale') || undefined;
+
+        const locale = config.get<string>('dateLocale') || undefined;
         const summary = commit.summary.length > 72 ? `${commit.summary.slice(0, 69)}...` : commit.summary;
         const lineLength = editor.document.lineAt(currentLine).text.length;
         summaryRange = { uri: currentUri, line: currentLine, start: lineLength };

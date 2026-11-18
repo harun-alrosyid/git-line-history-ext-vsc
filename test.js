@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const { commitUrl, diffLines, escapeMarkdown, html } = require('./out/format');
 const { parseBlame, lineCommit } = require('./out/git');
 
@@ -45,26 +48,40 @@ async function runTests() {
   assert.equal(escapeMarkdown('hello [world] (test) *bold*'), 'hello \\[world\\] \\(test\\) \\*bold\\*');
   assert.equal(html('Tom & Jerry <script>"quotes"\''), 'Tom &amp; Jerry &lt;script&gt;&quot;quotes&quot;&#39;');
 
-  // 7. lineCommit on committed file
-  const committedFile = path.resolve('package.json');
-  const committed = await lineCommit(committedFile, 0);
-  assert.ok(committed, 'Expected committed lineCommit to return a result');
-  assert.equal(committed.isUncommitted, false);
-  assert.ok(committed.hash.length > 0);
-  assert.ok(committed.author.length > 0);
+  // 7. lineCommit testing using isolated temp git repo
+  const rawDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-line-history-test-'));
+  const tempDir = fs.realpathSync(rawDir);
+  try {
+    execFileSync('git', ['init'], { cwd: tempDir });
+    execFileSync('git', ['config', 'user.name', 'Tester'], { cwd: tempDir });
+    execFileSync('git', ['config', 'user.email', 'tester@example.com'], { cwd: tempDir });
+    const tempFile = path.join(tempDir, 'demo.txt');
+    fs.writeFileSync(tempFile, 'first committed line\n');
+    execFileSync('git', ['add', 'demo.txt'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'initial commit'], { cwd: tempDir });
+    fs.appendFileSync(tempFile, 'second uncommitted line\n');
 
-  // 8. lineCommit on uncommitted line in .gitignore (line 5 has .docs)
-  const uncommittedFile = path.resolve('.gitignore');
-  const uncommitted = await lineCommit(uncommittedFile, 4);
-  assert.ok(uncommitted, 'Expected uncommitted lineCommit to return a result');
-  assert.equal(uncommitted.isUncommitted, true);
-  assert.equal(uncommitted.author, 'You');
-  assert.equal(uncommitted.summary, 'Uncommitted changes');
+    // Test committed line
+    const committed = await lineCommit(tempFile, 0);
+    assert.ok(committed, 'Expected committed lineCommit to return a result');
+    assert.equal(committed.isUncommitted, false);
+    assert.equal(committed.author, 'Tester');
+    assert.equal(committed.summary, 'initial commit');
 
-  // 9. lineCommit with includeParent: true on uncommitted line
-  const uncommittedWithParent = await lineCommit(uncommittedFile, 4, { includeParent: true });
-  assert.ok(uncommittedWithParent.parent, 'Expected parent for uncommitted change');
-  assert.ok(uncommittedWithParent.parent.hash.length > 0);
+    // Test uncommitted line
+    const uncommitted = await lineCommit(tempFile, 1);
+    assert.ok(uncommitted, 'Expected uncommitted lineCommit to return a result');
+    assert.equal(uncommitted.isUncommitted, true);
+    assert.equal(uncommitted.author, 'You');
+    assert.equal(uncommitted.summary, 'Uncommitted changes');
+
+    // Test uncommitted with includeParent
+    const uncommittedWithParent = await lineCommit(tempFile, 1, { includeParent: true });
+    assert.ok(uncommittedWithParent.parent, 'Expected parent for uncommitted change');
+    assert.equal(uncommittedWithParent.parent.hash, committed.hash);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 
   console.log('all tests passed ok');
 }

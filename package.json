@@ -34,6 +34,11 @@
           "type": "string",
           "default": "",
           "description": "Locale used for commit dates. Empty uses the system locale."
+        },
+        "gitLineHistory.showUncommitted": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to show git line history for uncommitted or edited lines. Disabled by default for better performance."
         }
       }
     }

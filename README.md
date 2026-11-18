@@ -11,6 +11,7 @@ Small VS Code extension that shows Git history for the line under the cursor.
 - Copies the current or parent commit hash with the copy icon.
 - Links commits through the repository `origin` remote when it is supported.
 - Formats dates with the optional `gitLineHistory.dateLocale` setting.
+- Disables inline blame on uncommitted or edited lines by default for better performance and a distraction-free editing experience.
 - Does not add a panel, status-bar item, GitHub connection, or settings icon.
 
 ## Architecture
@@ -83,7 +84,8 @@ The generated `.vsix` file can be shared or uploaded to a release.
 
 ## Configuration
 
-`gitLineHistory.dateLocale` controls date formatting. Empty uses the system locale.
+- `gitLineHistory.dateLocale`: controls date formatting. Empty uses the system locale.
+- `gitLineHistory.showUncommitted`: controls whether uncommitted or newly edited lines show inline blame. Default is `false` to keep editing fast and distraction-free.
 
 ## Limitations
 
