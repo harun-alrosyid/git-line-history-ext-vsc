@@ -2,6 +2,19 @@
 
 Small VS Code extension that shows Git history for the line under the cursor.
 
+![Git Line History preview](img/preview.jpg)
+
+## Table of contents
+
+- [Features](#features)
+- [Command Palette](#command-palette)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [Install from source](#install-from-source)
+- [Build a VSIX](#build-a-vsix)
+- [Configuration](#configuration)
+- [Limitations](#limitations)
+
 ## Features
 
 - Shows a muted inline summary with the author, date, and commit message.
@@ -12,7 +25,13 @@ Small VS Code extension that shows Git history for the line under the cursor.
 - Links commits through the repository `origin` remote when it is supported.
 - Formats dates with the optional `gitLineHistory.dateLocale` setting.
 - Disables inline blame on uncommitted or edited lines by default for better performance and a distraction-free editing experience.
+- Activates only in workspaces containing a Git repository.
 - Does not add a panel, status-bar item, GitHub connection, or settings icon.
+
+## Command Palette
+
+- `Git Line History: Reload Extension`: restarts the extension host without reloading the whole window.
+- `Git Line History: Copy Commit Hash`: copies the current or parent commit hash from the copy icon in a hover.
 
 ## Architecture
 
