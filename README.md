@@ -6,14 +6,17 @@ Small VS Code extension that shows Git history for the line under the cursor.
 
 ## Table of contents
 
-- [Features](#features)
-- [Command Palette](#command-palette)
-- [Architecture](#architecture)
-- [Requirements](#requirements)
-- [Install from source](#install-from-source)
-- [Build a VSIX](#build-a-vsix)
-- [Configuration](#configuration)
-- [Limitations](#limitations)
+- [Git Line History](#git-line-history)
+  - [Table of contents](#table-of-contents)
+  - [Features](#features)
+  - [Command Palette](#command-palette)
+  - [Architecture](#architecture)
+    - [Files](#files)
+  - [Requirements](#requirements)
+  - [Install from source](#install-from-source)
+  - [Build a VSIX](#build-a-vsix)
+  - [Configuration](#configuration)
+  - [Limitations](#limitations)
 
 ## Features
 
@@ -95,6 +98,8 @@ Install the VS Code packaging tool once:
 
 ```sh
 npm install --global @vscode/vsce
+npm install
+npm run compile
 vsce package
 code --install-extension git-line-history-0.0.4.vsix
 ```
