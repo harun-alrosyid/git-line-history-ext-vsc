@@ -25,6 +25,8 @@ export type LineCommitOptions = {
   contents?: string;
 };
 
+export type HistoryCommit = { hash: string; author: string; date: Date | null; summary: string };
+
 type ParentInfo = {
   hash: string;
   author: string;
@@ -35,6 +37,7 @@ type ParentInfo = {
 const rootCache = new Map<string, string | null>();
 const remoteCache = new Map<string, string | null>();
 const parentInfoCache = new Map<string, ParentInfo | null>();
+const historyCache = new Map<string, { commits: HistoryCommit[]; complete: boolean }>();
 
 function setCacheWithLimit<K, V>(map: Map<K, V>, key: K, value: V, max = 500): void {
   if (map.size >= max) {
@@ -48,6 +51,29 @@ export function clearGitCache(): void {
   rootCache.clear();
   remoteCache.clear();
   parentInfoCache.clear();
+  historyCache.clear();
+}
+
+export async function lineHistory(filePath: string, line: number, version: number, offset = 0): Promise<{ commits: HistoryCommit[]; complete: boolean } | null> {
+  let resolvedPath = filePath;
+  try { resolvedPath = fs.realpathSync(filePath); } catch {}
+  const root = await getRepoRoot(path.dirname(resolvedPath));
+  if (!root || !Number.isInteger(line) || line < 0 || !Number.isInteger(offset) || offset < 0) return null;
+  const relative = path.relative(root, resolvedPath).replace(/\\/g, '/');
+  const key = `${root}\0${relative}\0${line}\0${version}`;
+  const cached = historyCache.get(key);
+  if (cached) return { commits: cached.commits.slice(offset, offset + 10), complete: offset + 10 >= cached.commits.length };
+  try {
+    const { stdout } = await execGit(['log', '-L', `${line + 1},${line + 1}:${relative}`, '--format=GLH:%H%x00%an%x00%aI%x00%s'], { cwd: root });
+    const commits: HistoryCommit[] = [];
+    for (const match of stdout.matchAll(/^GLH:([0-9a-f]+)\0([^\0]*)\0([^\0]*)\0([^\n]*)/gm)) {
+      if (commits.some(commit => commit.hash === match[1])) continue;
+      const date = new Date(match[3]);
+      commits.push({ hash: match[1], author: match[2], date: Number.isNaN(date.getTime()) ? null : date, summary: match[4] });
+    }
+    setCacheWithLimit(historyCache, key, { commits, complete: true });
+    return { commits: commits.slice(offset, offset + 10), complete: offset + 10 >= commits.length };
+  } catch { return null; }
 }
 
 function execGit(args: string[], options: { cwd: string; input?: string }): Promise<{ stdout: string; stderr: string }> {

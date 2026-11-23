@@ -23,6 +23,10 @@
         "title": "Git Line History: Copy Commit Hash"
       },
       {
+        "command": "gitLineHistory.moreHistory",
+        "title": "Git Line History: More History"
+      },
+      {
         "command": "gitLineHistory.reloadExtension",
         "title": "Git Line History: Reload Extension"
       }

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { clearGitCache, lineCommit, parseBlame } from './git';
+import { clearGitCache, lineCommit, lineHistory, parseBlame } from './git';
 import { commitUrl, DateFormatStyle, diffLines, escapeMarkdown, formatDate, html } from './format';
 import { createInlineBlameDecoration } from './styles';
 
@@ -22,6 +22,22 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.executeCommand('workbench.action.restartExtensionHost');
     })
   );
+
+  context.subscriptions.push(vscode.commands.registerCommand('gitLineHistory.moreHistory', async (filePath: string, line: number, version: number) => {
+    let offset = 0;
+    for (; ;) {
+      const page = await lineHistory(filePath, line, version, offset);
+      if (!page) { await vscode.window.showInformationMessage('Line history is unavailable for this file or line.'); return; }
+      const items = page.commits.map((commit, i) => ({ label: `${offset + i + 1}. ${commit.hash.slice(0, 8)} · ${commit.author}`, description: `${commit.date?.toLocaleString() ?? 'Unknown date'} · ${commit.summary}` }));
+      const loadMore = !page.complete ? { label: 'Show next 10 $(arrow-right)' } : undefined;
+      const previous = offset > 0 ? { label: '$(arrow-left) Show previous 10' } : undefined;
+      const selected = await vscode.window.showQuickPick([...(previous ? [previous] : []), ...items, ...(loadMore ? [loadMore] : [])], { placeHolder: `Line history · ${offset + 1}–${offset + page.commits.length}` });
+      if (!selected) return;
+      if (selected === previous) { offset = Math.max(0, offset - 10); continue; }
+      if (selected === loadMore) { offset += page.commits.length; continue; }
+      return;
+    }
+  }));
 
   context.subscriptions.push(
     vscode.commands.registerCommand('gitLineHistory.copyCommit', async (hash: string) => {
@@ -49,7 +65,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
           const locale = config.get<string>('dateLocale') || undefined;
           const markdown = new vscode.MarkdownString();
-          markdown.isTrusted = { enabledCommands: ['gitLineHistory.copyCommit'] };
+          markdown.isTrusted = { enabledCommands: ['gitLineHistory.copyCommit', 'gitLineHistory.moreHistory'] };
           markdown.supportThemeIcons = true;
           markdown.supportHtml = true;
 
@@ -88,6 +104,8 @@ export function activate(context: vscode.ExtensionContext): void {
               markdown.appendCodeblock(diffLines(commit.parent.line, document.lineAt(position.line).text), 'diff');
             }
           }
+          const historyArgs = encodeURIComponent(JSON.stringify([document.uri.fsPath, position.line, document.version]));
+          markdown.appendMarkdown(`\n[More History...](command:gitLineHistory.moreHistory?${historyArgs})`);
           return new vscode.Hover(markdown);
         } catch {
           return;
