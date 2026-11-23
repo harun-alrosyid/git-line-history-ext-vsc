@@ -60,19 +60,20 @@ export async function lineHistory(filePath: string, line: number, version: numbe
   const root = await getRepoRoot(path.dirname(resolvedPath));
   if (!root || !Number.isInteger(line) || line < 0 || !Number.isInteger(offset) || offset < 0) return null;
   const relative = path.relative(root, resolvedPath).replace(/\\/g, '/');
-  const key = `${root}\0${relative}\0${line}\0${version}`;
+  const key = `${root}\0${relative}\0${line}\0${version}\0${offset}`;
   const cached = historyCache.get(key);
-  if (cached) return { commits: cached.commits.slice(offset, offset + 10), complete: offset + 10 >= cached.commits.length };
+  if (cached) return cached;
   try {
-    const { stdout } = await execGit(['log', '-L', `${line + 1},${line + 1}:${relative}`, '--format=GLH:%H%x00%an%x00%aI%x00%s'], { cwd: root });
+    const { stdout } = await execGit(['log', '-L', `${line + 1},${line + 1}:${relative}`, `--skip=${offset}`, '--max-count=10', '--format=GLH:%H%x00%an%x00%aI%x00%s'], { cwd: root });
     const commits: HistoryCommit[] = [];
     for (const match of stdout.matchAll(/^GLH:([0-9a-f]+)\0([^\0]*)\0([^\0]*)\0([^\n]*)/gm)) {
       if (commits.some(commit => commit.hash === match[1])) continue;
       const date = new Date(match[3]);
       commits.push({ hash: match[1], author: match[2], date: Number.isNaN(date.getTime()) ? null : date, summary: match[4] });
     }
-    setCacheWithLimit(historyCache, key, { commits, complete: true });
-    return { commits: commits.slice(offset, offset + 10), complete: offset + 10 >= commits.length };
+    const page = { commits, complete: commits.length < 10 };
+    setCacheWithLimit(historyCache, key, page);
+    return page;
   } catch { return null; }
 }
 
