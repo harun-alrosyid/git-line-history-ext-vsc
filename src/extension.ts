@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { clearGitCache, lineCommit, lineHistory, parseBlame } from './git';
+import * as path from 'node:path';
+import { clearGitCache, getRemoteOrigin, getRepoRoot, lineCommit, lineHistory, parseBlame } from './git';
 import { commitUrl, DateFormatStyle, diffLines, escapeMarkdown, formatDate, html } from './format';
 import { createInlineBlameDecoration } from './styles';
 
@@ -28,13 +29,28 @@ export function activate(context: vscode.ExtensionContext): void {
     for (; ;) {
       const page = await lineHistory(filePath, line, version, offset);
       if (!page) { await vscode.window.showInformationMessage('Line history is unavailable for this file or line.'); return; }
-      const items = page.commits.map((commit, i) => ({ label: `${offset + i + 1}. ${commit.hash.slice(0, 8)} · ${commit.author}`, description: `${commit.date?.toLocaleString() ?? 'Unknown date'} · ${commit.summary}` }));
-      const loadMore = !page.complete ? { label: 'Show next 10 $(arrow-right)' } : undefined;
-      const previous = offset > 0 ? { label: '$(arrow-left) Show previous 10' } : undefined;
-      const selected = await vscode.window.showQuickPick([...(previous ? [previous] : []), ...items, ...(loadMore ? [loadMore] : [])], { placeHolder: `Line history · ${offset + 1}–${offset + page.commits.length}` });
+      type HistoryPick = vscode.QuickPickItem & { commit?: (typeof page.commits)[number] };
+      const items: HistoryPick[] = page.commits.map((commit, i) => ({ label: `${offset + i + 1}. ${commit.hash.slice(0, 8)} · ${commit.author}`, description: `${commit.date?.toLocaleString() ?? 'Unknown date'} · ${commit.summary}`, commit }));
+      const loadMore: HistoryPick | undefined = !page.complete ? { label: 'Show next 10 $(arrow-right)' } : undefined;
+      const previous: HistoryPick | undefined = offset > 0 ? { label: '$(arrow-left) Show previous 10' } : undefined;
+      const selected = await vscode.window.showQuickPick<HistoryPick>([...(previous ? [previous] : []), ...items, ...(loadMore ? [loadMore] : [])], { placeHolder: `Line history · ${offset + 1}–${offset + page.commits.length}` });
       if (!selected) return;
       if (selected === previous) { offset = Math.max(0, offset - 10); continue; }
       if (selected === loadMore) { offset += page.commits.length; continue; }
+      if (selected.commit) {
+        const actions = ['Copy Commit Hash', 'Open Commit in Browser'];
+        const action = await vscode.window.showQuickPick(actions, { placeHolder: `${selected.commit.hash.slice(0, 8)} · ${selected.commit.summary}` });
+        if (action === actions[0]) {
+          await vscode.env.clipboard.writeText(selected.commit.hash);
+          vscode.window.showInformationMessage('Commit hash copied');
+        } else if (action === actions[1]) {
+          const root = await getRepoRoot(path.dirname(filePath));
+          const remote = root ? await getRemoteOrigin(root) : null;
+          const url = commitUrl(remote, selected.commit.hash);
+          if (url) await vscode.env.openExternal(vscode.Uri.parse(url));
+          else vscode.window.showInformationMessage('No supported Git remote URL is available.');
+        }
+      }
       return;
     }
   }));

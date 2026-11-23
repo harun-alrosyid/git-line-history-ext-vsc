@@ -21,6 +21,10 @@ export function commitUrl(remote: string | null, hash: string): string | null {
       return `${base}/-/commit/${hash}`;
     }
     if (url.hostname.includes('bitbucket')) {
+      const serverRepo = url.pathname.match(/^\/scm\/([^/]+)\/([^/]+)$/i);
+      if (serverRepo) {
+        return `${url.origin}/projects/${serverRepo[1].toUpperCase()}/repos/${serverRepo[2]}/commits/${hash}`;
+      }
       return `${base}/commits/${hash}`;
     }
   } catch {}
